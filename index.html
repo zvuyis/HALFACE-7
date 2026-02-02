@@ -3,35 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Symmetry AI Live</title>
+    <title>True Symmetry - Dynamic Axis</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.js"></script>
     <script src="https://unpkg.com/ml5@1/dist/ml5.min.js"></script>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; touch-action: none; }
-        #ui { position: absolute; bottom: 30px; width: 100%; display: flex; justify-content: center; gap: 20px; z-index: 100; }
-        button { 
-            padding: 15px 25px; border-radius: 50px; border: 2px solid white; 
-            background: rgba(0,0,0,0.7); color: white; font-weight: bold; font-size: 16px;
-        }
-        #status {
-            position: absolute; top: 50%; width: 100%; text-align: center;
-            color: white; font-family: sans-serif; pointer-events: none; z-index: 5;
-        }
+        body { margin: 0; background: #000; overflow: hidden; }
+        #ui { position: absolute; bottom: 30px; width: 100%; display: flex; justify-content: center; gap: 15px; z-index: 100; }
+        button { padding: 15px 25px; border-radius: 50px; border: 2px solid #fff; background: rgba(0,0,0,0.8); color: #fff; font-weight: bold; }
     </style>
 </head>
 <body>
-    <div id="status">אנא אשר מצלמה וגע במסך להפעלה</div>
-    <div id="ui">
-        <button onclick="mirrorSide='left'">שכפל שמאל</button>
-        <button onclick="mirrorSide='right'">שכפל ימין</button>
-    </div>
-
 <script>
-let capture;
-let faceMesh;
-let face;
-let mirrorSide = 'left';
-let isReady = false;
+let capture, faceMesh, face;
+let mode = 'left'; // איזה צד לשכפל
 
 function preload() {
     faceMesh = ml5.faceMesh({ maxFaces: 1, flipped: false });
@@ -39,68 +23,72 @@ function preload() {
 
 function setup() {
     createCanvas(windowWidth, windowHeight);
-    let constraints = {
-        video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
-        audio: false
-    };
-    capture = createCapture(constraints, () => {
-        isReady = true;
-        document.getElementById('status').innerHTML = "מחפש פנים...";
-    });
+    capture = createCapture({ video: { facingMode: "user" }, audio: false });
     capture.size(640, 480);
-    capture.elt.setAttribute('playsinline', '');
     capture.hide();
-    faceMesh.detectStart(capture, (results) => {
-        if (results && results.length > 0) {
-            face = results[0];
-            document.getElementById('status').style.display = 'none';
-        }
-    });
+    faceMesh.detectStart(capture, (results) => { face = results[0]; });
 }
 
 function draw() {
     background(0);
-    if (!isReady || !face || !face.keypoints) return;
+    if (!face || !face.keypoints) return;
 
+    // 1. מציאת האף (הציר הדינמי)
     let nose = face.keypoints[1];
-    let cutX = nose.x; 
-    let cw = capture.width;
-    let ch = capture.height;
-    let screenScale = height / ch;
-    let screenNoseX = map(cutX, 0, cw, 0, cw * screenScale);
-    let offsetX = (width / 2) - screenNoseX;
+    let nx = nose.x; 
+    let vW = capture.width;
+    let vH = capture.height;
+
+    // 2. חישוב קנה מידה למילוי המסך
+    let s = height / vH;
     
+    // 3. חישוב מיקום האף על המסך הפיזי
+    let screenNoseX = nx * s;
+
+    // אנחנו מזיזים את כל הציור כך שהאף תמיד יהיה במרכז המסך הפיזי
+    let globalOffset = (width / 2) - screenNoseX;
     push();
-    translate(offsetX, 0);
-    if (mirrorSide === 'left') {
-        image(capture, 0, 0, screenNoseX, height, 0, 0, cutX, ch);
+    translate(globalOffset, 0);
+
+    if (mode === 'left') {
+        // --- צד שמאל המקורי (נגזר מהאף שמאלה) ---
+        // (תמונה, יעד_X, יעד_Y, יעד_רוחב, יעד_גובה, מקור_X, מקור_Y, מקור_רוחב, מקור_גובה)
+        image(capture, 0, 0, screenNoseX, height, 0, 0, nx, vH);
+
+        // --- צד ימין המשוכפל (לוקח את אותו חיתוך והופך אותו) ---
         push();
         translate(screenNoseX * 2, 0);
         scale(-1, 1);
-        image(capture, 0, 0, screenNoseX, height, 0, 0, cutX, ch);
+        image(capture, 0, 0, screenNoseX, height, 0, 0, nx, vH);
         pop();
     } else {
-        let rightPartWidth = (cw - cutX) * screenScale;
-        image(capture, screenNoseX, 0, rightPartWidth, height, cutX, 0, cw - cutX, ch);
+        // --- צד ימין המקורי (נגזר מהאף ימינה) ---
+        let rightW_source = vW - nx;
+        let rightW_screen = rightW_source * s;
+        image(capture, screenNoseX, 0, rightW_screen, height, nx, 0, rightW_source, vH);
+
+        // --- צד שמאל המשוכפל ---
         push();
         translate(screenNoseX * 2, 0);
         scale(-1, 1);
-        image(capture, screenNoseX, 0, rightPartWidth, height, cutX, 0, cw - cutX, ch);
+        image(capture, screenNoseX, 0, rightW_screen, height, nx, 0, rightW_source, vH);
         pop();
     }
-    stroke(0, 255, 0, 150);
+
+    // קו סימטריה שנדבק לאף
+    stroke(0, 255, 0);
     strokeWeight(3);
     line(screenNoseX, 0, screenNoseX, height);
     pop();
 }
 
-function touchStarted() {
-    if (capture && capture.elt) capture.elt.play();
-}
-
-function windowResized() {
-    resizeCanvas(windowWidth, windowHeight);
-}
+function touchStarted() { if (capture) capture.elt.play(); }
+function windowResized() { resizeCanvas(windowWidth, windowHeight); }
 </script>
+
+<div id="ui">
+    <button onclick="mode='left'">שכפל חצי שמאל</button>
+    <button onclick="mode='right'">שכפל חצי ימין</button>
+</div>
 </body>
 </html>
