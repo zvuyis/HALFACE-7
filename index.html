@@ -3,19 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Symmetry AI - Final</title>
+    <title>DYNAMIC MIRROR V2</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.js"></script>
     <script src="https://unpkg.com/ml5@1/dist/ml5.min.js"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; }
-        #ui { position: absolute; bottom: 20px; width: 100%; display: flex; justify-content: center; gap: 10px; z-index: 100; }
-        button { padding: 15px 25px; border-radius: 30px; border: 2px solid #fff; background: #000; color: #fff; font-weight: bold; }
+        #status { position: absolute; top: 20px; width: 100%; text-align: center; color: #0f0; z-index: 10; font-family: monospace; }
+        #btns { position: absolute; bottom: 30px; width: 100%; display: flex; justify-content: center; gap: 15px; z-index: 100; }
+        button { padding: 12px 20px; border-radius: 20px; border: 2px solid #0f0; background: rgba(0,0,0,0.8); color: #0f0; font-weight: bold; }
     </style>
 </head>
 <body>
+    <div id="status">INITIALIZING AI...</div>
+    <div id="btns">
+        <button onclick="side='left'">LEFT SIDE</button>
+        <button onclick="side='right'">RIGHT SIDE</button>
+    </div>
+
 <script>
 let capture, faceMesh, face;
 let side = 'left';
+let smoothNoseX = 320; // התחלה במרכז
 
 function preload() {
     faceMesh = ml5.faceMesh({ maxFaces: 1, flipped: false });
@@ -31,55 +39,56 @@ function setup() {
 
 function draw() {
     background(0);
-    if (!face || !face.keypoints) return;
+    if (!face) {
+        document.getElementById('status').innerText = "LOOK AT CAMERA";
+        return;
+    }
+    document.getElementById('status').innerText = "TRACKING ACTIVE";
 
-    // 1. זיהוי נקודת האף המדויקת מה-AI
-    let nose = face.keypoints[1]; 
-    let nx = nose.x; 
-    let ny = nose.y;
+    let nose = face.keypoints[1];
+    // מנגנון החלקה (Lerp) כדי שהקו לא יקפוץ
+    smoothNoseX = lerp(smoothNoseX, nose.x, 0.2);
     
-    let vw = capture.width;
-    let vh = capture.height;
+    let cw = capture.width;
+    let ch = capture.height;
+    let screenScale = height / ch;
+    let screenNoseX = map(smoothNoseX, 0, cw, 0, cw * screenScale);
     
-    // 2. חצי רוחב המסך הפיזי
-    let halfW = width / 2;
+    // חישוב הזזה כדי שהאף תמיד יהיה במרכז המסך הפיזי
+    let centeringOffset = (width / 2) - screenNoseX;
+    
+    push();
+    translate(centeringOffset, 0);
 
     if (side === 'left') {
-        // צד שמאל: לוקח רק את מה שמשמאל לאף ומותח על חצי מסך
-        // (image, dx, dy, dW, dH, sx, sy, sW, sH)
-        image(capture, 0, 0, halfW, height, 0, 0, nx, vh);
-        
-        // צד ימין: משקף את אותו החלק בדיוק
+        // מצייר צד שמאל עד האף
+        image(capture, 0, 0, screenNoseX, height, 0, 0, smoothNoseX, ch);
+        // משקף ימינה
         push();
-        translate(width, 0);
+        translate(screenNoseX * 2, 0);
         scale(-1, 1);
-        image(capture, 0, 0, halfW, height, 0, 0, nx, vh);
+        image(capture, 0, 0, screenNoseX, height, 0, 0, smoothNoseX, ch);
         pop();
     } else {
-        // צד ימין: לוקח רק את מה שמימין לאף ומותח על חצי מסך
-        let sourceWidth = vw - nx;
-        image(capture, halfW, 0, halfW, height, nx, 0, sourceWidth, vh);
-        
-        // צד שמאל: משקף את צד ימין
+        // מצייר צד ימין מהאף
+        let rWidth = (cw - smoothNoseX) * screenScale;
+        image(capture, screenNoseX, 0, rWidth, height, smoothNoseX, 0, cw - smoothNoseX, ch);
+        // משקף שמאלה
         push();
-        translate(halfW, 0);
+        translate(screenNoseX * 2, 0);
         scale(-1, 1);
-        image(capture, 0, 0, halfW, height, nx, 0, sourceWidth, vh);
+        image(capture, screenNoseX, 0, rWidth, height, smoothNoseX, 0, cw - smoothNoseX, ch);
         pop();
     }
-    
-    // קו הפרדה ויזואלי במרכז (איפה שהאף אמור להיות)
+
+    // קו הסימטריה הדינמי - עכשיו בצבע ניאון
     stroke(0, 255, 0);
-    strokeWeight(2);
-    line(halfW, 0, halfW, height);
+    strokeWeight(4);
+    line(screenNoseX, 0, screenNoseX, height);
+    pop();
 }
 
-function touchStarted() { if (capture) capture.elt.play(); }
+function touchStarted() { if(capture) capture.elt.play(); }
 </script>
-
-<div id="ui">
-    <button onclick="side='left'">שמאל כפול</button>
-    <button onclick="side='right'">ימין כפול</button>
-</div>
 </body>
 </html>
